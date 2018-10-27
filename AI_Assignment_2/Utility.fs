@@ -26,7 +26,7 @@
     /// <param name="file">the filename of the maze file.</param>
     let readMazeAsArray file = 
         let lines = System.IO.File.ReadAllLines(file)
-        Array2D.init (lines.[0].Length-1) (lines.Length-1) (fun x y -> lines.[y].[x])
+        Array2D.init (lines.[0].Length) (lines.Length) (fun x y -> lines.[x].[y])
         
     /// <summary>Allows you to calculate the time cost of any function given the number of repeats and the function.</summary>
     /// <param name="repCnt">the number of repeats.</param>
