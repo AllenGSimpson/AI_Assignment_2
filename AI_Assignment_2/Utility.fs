@@ -218,21 +218,25 @@
             printfn ""
         printfn ""
 
+    let noEmpty mazeState =
+        mazeState
+        |> Map.exists ( fun _ v -> v = '_' )
+        |> not 
     
     let search runMazeState (mazeState:MazeState) = 
-        let rec fun1 mazeState backtrackFun =        
-            runMazeState mazeState 
-            |>function
-                | Some [x] when x.heads = [] -> Some x //Only one return value when there are no heads -- goal state
-                | Some (h :: t) -> fun2 h t 
-                | _ -> backtrackFun()  
-        and fun2 mazeState restStates =
-            fun1 mazeState (fun _ -> 
-                match restStates with
-                | [] -> None
-                | h::t -> fun2 h t)
-        fun1 mazeState (fun _ -> None)
-        
+        let rec loop mazeStates backtrackFun =    
+            printMazeState mazeState
+            match mazeStates with
+            | [] -> printfn "no valid options! backtracking!"; backtrackFun ()
+            | h :: _ when h.heads.Length = 0 && noEmpty h.maze -> printfn "Found Goal!"; Some h //Only one return value when there are no heads -- goal state 
+            | h :: rest -> 
+                match runMazeState h with
+                | None -> printfn "doesn't work! backtracking!"; loop rest backtrackFun // didn't work, to try next
+                | Some rest -> printfn "bad map! backtracking!"; loop rest (fun _ -> loop rest backtrackFun) //put the rest on a stack and start working on the new possiblities
+        loop [mazeState] (fun _ -> None)
+    
+
+
 
     //// moves A out and then show two possible positions for P
     //runMazeStateForward mazeState
