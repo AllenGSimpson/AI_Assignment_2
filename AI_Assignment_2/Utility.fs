@@ -80,14 +80,15 @@
         
     /// <summary>Allows you to calculate the time cost of any function given the number of repeats and the function.</summary>
     /// <param name="repCnt">the number of repeats.</param>
-    type Maze = Map<int*int,char>
-    type Head = {
+
+    type Maze = Map<int*int,char> //Entire maze/game (n)
+    type Head = {                 //unconnected path "ends" (n) 
         x : int
         y : int
         color : char
     }
 
-    type MazeState = 
+    type MazeState =             //Maze at different states (n)
         {
             maze  : Maze
             heads : List<Head>
@@ -102,7 +103,7 @@
         |> Seq.sortBy (function (KeyValue((x,y),_)) -> y,x )    //flip the maze around
         |> Seq.map (function (KeyValue(p,color)) -> p,color)    //unwrapping the map KeyValuePair values
         |> Seq.filter (function _,'_' -> false | _ -> true)     //filter out blank spots
-        |> Seq.iter (fun (p,color) ->
+        |> Seq.iter (fun (p,color) ->                           //one same-color source block is marked start, the other same-color is marked goal (n)
             if starts.ContainsKey color |> not then
                 starts <- Map.add color p starts
             elif goals.ContainsKey color |> not then
@@ -119,25 +120,25 @@
     // let starts, goals, head = mazeState.starts, mazeState.goals, mazeState.heads.[0]
 
     let getValidMoves ({maze=maze;starts=starts;goals=goals} as mazeState:MazeState) (head : Head)=
-        let sShaped (x,y) =
+        let sShaped (x,y) =         //constraint 1: no zig-zags allowed (n)
             let allColor (pa,pb,pc) = 
                 match maze.TryFind pa, maze.TryFind pb, maze.TryFind pc with 
                 | Some a, Some b, Some c when a = b && b = c && a = head.color -> true
                 | _ -> false
 
-            let upperLeft = ((x-1,y-1),(x,y-1),(x-1,y)) |> allColor
+            let upperLeft = ((x-1,y-1),(x,y-1),(x-1,y)) |> allColor 
             let upperRight = ((x,y-1),(x+1,y-1),(x+1,y)) |> allColor
             let lowerRight = ((x+1,y),(x+1,y+1),(x,y+1)) |> allColor
             let lowerLeft = ((x,y+1),(x-1,y+1),(x-1,y)) |> allColor
 
-            upperLeft || upperRight || lowerLeft || lowerRight
+            upperLeft || upperRight || lowerLeft || lowerRight //if any of these are TRUE, then zig-zag exists (n)
             
         let rec loop directions cont =
             match directions with
             | [] -> cont []
             | (x,y) as dir :: rest ->
                 if goals.[head.color] = dir then [{color = head.color; x = x; y = y},true]      // if this is the goal then stop looking for anything else and just return the goal
-                elif (maze.[dir] <> '_') || (sShaped dir) then loop rest cont                   //if the position is not a '_' or will create and S, continue the loop
+                elif (maze.[dir] <> '_') || (sShaped dir) then loop rest cont                   //if the position is not a '_' or will create and S, continue the loop (constraint 2 (n))
                 else loop rest (fun xs -> ({color = head.color; x = x; y = y},false) :: xs |> cont)
                 
         let directions =
@@ -147,11 +148,11 @@
                 (head.x+1,head.y) // east
                 (head.x,head.y+1) // south
             ]
-            |> List.filter (fun p -> maze.ContainsKey p)    // remove any locations outside the maze
+            |> List.filter (fun p -> maze.ContainsKey p)    //remove any locations outside the maze (constraint 3 (n))
         loop directions id
 
 
-    let rec runMazeStateForward (mazeState : MazeState) = 
+    let rec runMazeStateForward (mazeState : MazeState) = //forward-looking algorithm
         
         let updateHead {color = color; x=x ; y=y}=
             {
@@ -163,10 +164,10 @@
         //let f = getValidMoves mazeState           //Partially applied version of line 107
         mazeState.heads  
         |> List.map (getValidMoves mazeState)       // same as List.map (fun x -> getValidMoves mazeState x)
-        |> List.sortBy (fun x -> x.Length)          // first element should be the smallest list of heads with directions to go to
+        |> List.sortBy (fun x -> x.Length)          // first element should be the smallest list of heads with directions to go to (most constrained path (n))
         |> function
-            | [] -> Some [mazeState]                //there are no heads left (remove heads from list when they are complete) that need to move so the mazestate is finished 
-            | [] :: _ -> None                       //backtrack
+            | [] -> Some [mazeState]                //there are no heads left (remove heads from list when they are complete) that need to move so the mazestate is finished (solution? (n))
+            | [] :: _ -> None                       //backtrack because there's an uncompleted connection with no available paths (n)
             | [{color = color; x=x ; y=y},true]  :: t  -> 
                 //during a goalcase we need to place the new location in the maze and remove the head color
                 {
@@ -181,7 +182,7 @@
                 |> List.map (fst >> updateHead)
                 |> Some                             //return a list of possible MazeState choices
     
-    let rec runMazeStateSimple (mazeState : MazeState) = 
+    let rec runMazeStateSimple (mazeState : MazeState) = //non-forward-looking (simple) algorithm
         
         let updateHead ({color = color; x=x ; y=y},isGoal)=
             {
@@ -203,7 +204,7 @@
                 |> List.map (updateHead)
                 |> Some                             //return a list of possible MazeState choices
 
-    let printMazeState (mazeState:MazeState) =
+    let printMazeState (mazeState:MazeState) = //print function (n)
         let xmin,xmax,ymin,ymax = mazeState.maze |> Seq.map (function | KeyValue(p,_) -> p) |> Seq.fold (fun (xmin,xmax,ymin,ymax) (x,y) -> (min xmin x,max xmax x,min ymin y,max ymax y)) (System.Int32.MaxValue,System.Int32.MinValue,System.Int32.MaxValue,System.Int32.MinValue)
         let xrange, yrange = xmax-xmin, ymax-ymin
         for y in 0 .. yrange do
@@ -223,7 +224,7 @@
         |> Map.exists ( fun _ v -> v = '_' )
         |> not 
     
-    let search runMazeState (mazeState:MazeState) = 
+    let search runMazeState (mazeState:MazeState) = //executes the appropriate search-algorithm (n)
         let rec loop mazeStates backtrackFun =    
             printMazeState mazeState
             match mazeStates with
