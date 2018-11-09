@@ -115,10 +115,27 @@
             starts = starts
             goals = goals
         }
+    
+    //Check that for all remaining heads, there is a goal state that can be acessed
+    let hasAccess ({maze=maze';heads=heads;starts=starts;goals=goals} as mazeState:MazeState) ({color=color;x=x;y=y},isGoal) = 
+        let maze = maze'.Add((x,y),color) // stick color in the correct spot for this move
+        if heads.Length = 0 then false
+        else
+            heads
+            |>Seq.forall(fun h ->                 
+                let goalx,goaly = goals.[h.color]
+                match maze.TryFind(goalx-1,goaly),maze.TryFind(goalx,goaly-1),maze.TryFind(goalx+1,goaly),maze.TryFind(goalx,goaly+1) with
+                | Some c, _, _, _ when c = '_' || c = h.color -> true
+                | _, Some c, _, _ when c = '_' || c = h.color -> true
+                | _, _, Some c, _ when c = '_' || c = h.color -> true   
+                | _, _, _, Some c when c = '_' || c = h.color -> true
+                | _ -> false
+            )
+            
 
     // let starts, goals, head = mazeState.starts, mazeState.goals, mazeState.heads.[0]
 
-    let getValidMoves ({maze=maze;starts=starts;goals=goals} as mazeState:MazeState) (head : Head)=
+    let getValidMoves ({maze=maze;starts=starts;goals=goals} as mazeState:MazeState) (head : Head) =
         let sShaped (x,y) =
             let allColor (pa,pb,pc) = 
                 match maze.TryFind pa, maze.TryFind pb, maze.TryFind pc with 
@@ -163,6 +180,9 @@
         //let f = getValidMoves mazeState           //Partially applied version of line 107
         mazeState.heads  
         |> List.map (getValidMoves mazeState)       // same as List.map (fun x -> getValidMoves mazeState x)
+        |> List.map (List.filter (fun head -> 
+            let results = hasAccess mazeState head
+            results))
         |> List.sortBy (fun x -> x.Length)          // first element should be the smallest list of heads with directions to go to
         |> function
             | [] -> Some [mazeState]                //there are no heads left (remove heads from list when they are complete) that need to move so the mazestate is finished 
@@ -180,6 +200,8 @@
                 h
                 |> List.map (fst >> updateHead)
                 |> Some                             //return a list of possible MazeState choices
+
+
     
     let rec runMazeStateSimple (mazeState : MazeState) = 
         
@@ -217,6 +239,37 @@
                     else System.Char.ToLower(c) |> printf "%c"
             printfn ""
         printfn ""
+    
+    let printMazeStates (mazeStates:MazeState list) =
+        match mazeStates with
+        | [] -> printfn "[]"
+        | mazeState::_ ->
+            let xmin,xmax,ymin,ymax = mazeState.maze |> Seq.map (function | KeyValue(p,_) -> p) |> Seq.fold (fun (xmin,xmax,ymin,ymax) (x,y) -> (min xmin x,max xmax x,min ymin y,max ymax y)) (System.Int32.MaxValue,System.Int32.MinValue,System.Int32.MaxValue,System.Int32.MinValue)
+            let xrange, yrange = xmax-xmin, ymax-ymin
+            for y in 0 .. yrange do
+                for i in 0 .. mazeStates.Length-1 do
+                    let mazeState = mazeStates.[i]
+                    for x in 0 .. xrange do
+                        let p = (xmin+x,ymin+y)
+                        match mazeState.maze.TryFind p with
+                        | None -> printf " "
+                        | Some '_' -> printf "_"
+                        | Some c ->
+                            let bkc = System.Console.BackgroundColor
+                            if mazeState.starts.[c] = p then
+                                System.Console.BackgroundColor <- System.ConsoleColor.Cyan
+                                printf "%c" c
+                            elif mazeState.goals.[c] = p && mazeState.heads |> List.exists (fun {color=color} -> color = c) then
+                                System.Console.BackgroundColor <- System.ConsoleColor.DarkMagenta
+                                printf "%c" c
+                            elif mazeState.goals.[c] = p then
+                                System.Console.BackgroundColor <- System.ConsoleColor.DarkGreen
+                                printf "%c" c
+                            else System.Char.ToLower(c) |> printf "%c"
+                            System.Console.BackgroundColor <- bkc
+                    printf " "
+                printfn ""
+            printfn ""
 
     let noEmpty mazeState =
         mazeState
@@ -224,15 +277,31 @@
         |> not 
     
     let search runMazeState (mazeState:MazeState) = 
+        let startTime = System.DateTime.Now
+        let mutable count = 0
         let rec loop mazeStates backtrackFun =    
-            printMazeState mazeState
+            count <- count+1
+            if count % 100000 = 0 then printfn "count: %d | time: %s \n" count ((System.DateTime.Now - startTime).ToString ())
+            if count % 100000 = 0 then printMazeStates mazeStates;
+            
             match mazeStates with
-            | [] -> printfn "no valid options! backtracking!"; backtrackFun ()
-            | h :: _ when h.heads.Length = 0 && noEmpty h.maze -> printfn "Found Goal!"; Some h //Only one return value when there are no heads -- goal state 
+            | [] -> 
+                //printfn "no valid options! backtracking!"; 
+                backtrackFun ()
+            | h :: _ when h.heads.Length = 0 && noEmpty h.maze -> 
+                printfn "Found Goal!"; 
+                Some (h,count) //Only one return value when there are no heads -- goal state 
+            | h :: rest when h.heads.Length = 0 -> 
+                //printfn "didn't work going to next sibling"; 
+                loop rest backtrackFun
             | h :: rest -> 
                 match runMazeState h with
-                | None -> printfn "doesn't work! backtracking!"; loop rest backtrackFun // didn't work, to try next
-                | Some rest -> printfn "bad map! backtracking!"; loop rest (fun _ -> loop rest backtrackFun) //put the rest on a stack and start working on the new possiblities
+                | None -> 
+                    //printfn "current state does not work! backtracking!"; 
+                    loop rest backtrackFun // didn't work, to try next
+                | Some rest' -> 
+                    //printfn "exploring current head's children"; 
+                    loop rest' (fun _ -> loop rest backtrackFun) //put the rest on a stack and start working on the new possiblities
         loop [mazeState] (fun _ -> None)
     
 
@@ -264,12 +333,12 @@
     let m2 = readMazeAsArray file
     let m3 = readMazeAsDictionary file
 
-    time 10000 (fun _ -> m1.[9,5] |> ignore)
-    time 10000 (fun _ -> m2.[9,5] |> ignore)
+    time 10000 (fun _ -> m1.[1,1] |> ignore)
+    time 10000 (fun _ -> m2.[1,1] |> ignore)
     time 10000 (fun _ -> m3.[9,5] |> ignore)
 
-    time 10000 (fun _ -> m1 |> Map.add (9,5) 'B' |> ignore)
-    time 10000 (fun _ -> let m' : char[,] = m2.Clone() |> unbox in m'.[9,5] <- 'B'; m' |> ignore)
+    time 10000 (fun _ -> m1 |> Map.add (1,1) 'B' |> ignore)
+    time 10000 (fun _ -> let m' : char[,] = m2.Clone() |> unbox in m'.[1,1] <- 'B'; m' |> ignore)
     time 10000 (fun _ -> let m' : System.Collections.Generic.Dictionary<(int*int),char> = System.Collections.Generic.Dictionary(m3) |> unbox in m'.[(9,5)] <- 'B'; m' |> ignore)
 
     //let modifyMap (m:'a) (k:'key) (v:'value)
