@@ -136,10 +136,24 @@
     // let starts, goals, head = mazeState.starts, mazeState.goals, mazeState.heads.[0]
 
     let getValidMoves ({maze=maze;starts=starts;goals=goals} as mazeState:MazeState) (head : Head) =
+        //let headHasAccess (x,y) =
+        //    let checkHead ({color=hcolor;x=hx;y=hy}) =
+        //        // west
+        //        match maze.TryFind(hx-1,hy) with
+        //        | Some c when 
+
+        //        match maze.TryFind(hx-1,hy),maze.TryFind(hx,hy-1),maze.TryFind(hx+1,hy),maze.TryFind(hx,hy+1) with
+        //            | Some c, _, _, _ when c = '_' || c = head.color -> true
+        //            | _, Some c, _, _ when c = '_' || c = head.color -> true
+        //            | _, _, Some c, _ when c = '_' || c = head.color -> true   
+        //            | _, _, _, Some c when c = '_' || c = head.color -> true
+        //            | _ -> false
         let sShaped (x,y) =
             let allColor (pa,pb,pc) = 
+                let goalPoint = goals.[head.color]
                 match maze.TryFind pa, maze.TryFind pb, maze.TryFind pc with 
-                | Some a, Some b, Some c when a = b && b = c && a = head.color -> true
+                | Some a, Some b, Some c when a = b && b = c && a = head.color -> 
+                    not(pa = goalPoint || pb=goalPoint || pc = goalPoint)
                 | _ -> false
 
             let upperLeft = ((x-1,y-1),(x,y-1),(x-1,y)) |> allColor
@@ -153,7 +167,7 @@
             match directions with
             | [] -> cont []
             | (x,y) as dir :: rest ->
-                if goals.[head.color] = dir then [{color = head.color; x = x; y = y},true]      // if this is the goal then stop looking for anything else and just return the goal
+                if goals.[head.color] = dir then loop rest (fun xs -> ({color = head.color; x = x; y = y},true) :: xs |> cont)      // if this is the goal then stop looking for anything else and just return the goal
                 elif (maze.[dir] <> '_') || (sShaped dir) then loop rest cont                   //if the position is not a '_' or will create and S, continue the loop
                 else loop rest (fun xs -> ({color = head.color; x = x; y = y},false) :: xs |> cont)
                 
@@ -276,20 +290,47 @@
         |> Map.exists ( fun _ v -> v = '_' )
         |> not 
     
+    //let canFindGoal ({maze=maze';heads=heads;starts=starts;goals=goals} as mazeState:MazeState) ({color=color;x=x;y=y},isGoal)=
+    //    let getFrontier ( maze: Maze) (x,y) = 
+    //        match maze.TryFind (x+1,y)with
+    //        | Some c when c = '_' || c = h.color -> 
+    //               match 
+    //        | _ ->
+    //        | _, Some c, _, _ when c = '_' || c = h.color -> true
+    //        | _, _, Some c, _ when c = '_' || c = h.color -> true   
+    //        | _, _, _, Some c when c = '_' || c = h.color -> true
+
+    //    let maze = maze'.Add((x,y),color) // stick color in the correct spot for this move
+    //    if heads.Length = 0 then false
+    //    else
+    //        heads
+    //        |>Seq.forall(fun h ->                 
+    //            let goalx,goaly = goals.[h.color]
+    //            match maze.TryFind(goalx-1,goaly),maze.TryFind(goalx,goaly-1),maze.TryFind(goalx+1,goaly),maze.TryFind(goalx,goaly+1) with
+    //            | Some c, _, _, _ when c = '_' || c = h.color -> true
+    //            | _, Some c, _, _ when c = '_' || c = h.color -> true
+    //            | _, _, Some c, _ when c = '_' || c = h.color -> true   
+    //            | _, _, _, Some c when c = '_' || c = h.color -> true
+    //            | _ -> false
+    //        )
+
+
     let search runMazeState (mazeState:MazeState) = 
         let startTime = System.DateTime.Now
         let mutable count = 0
         let rec loop mazeStates backtrackFun =    
             count <- count+1
-            if count % 100000 = 0 then printfn "count: %d | time: %s \n" count ((System.DateTime.Now - startTime).ToString ())
-            if count % 100000 = 0 then printMazeStates mazeStates;
-            
+            //if count % 1 = 0 then printfn "\ncount: %d | time: %s \n" count ((System.DateTime.Now - startTime).ToString ())
+            //if count % 1 = 0 then printfn "Set of mazeStates: ";printMazeStates mazeStates;
+            //System.Threading.Thread.Sleep(10000)
+            //System.Console.ReadKey() |>ignore
             match mazeStates with
             | [] -> 
                 //printfn "no valid options! backtracking!"; 
                 backtrackFun ()
             | h :: _ when h.heads.Length = 0 && noEmpty h.maze -> 
-                printfn "Found Goal!"; 
+                printfn "\nFound Goal!";
+                printfn "count: %d | time: %s \n" count ((System.DateTime.Now - startTime).ToString ());
                 Some (h,count) //Only one return value when there are no heads -- goal state 
             | h :: rest when h.heads.Length = 0 -> 
                 //printfn "didn't work going to next sibling"; 

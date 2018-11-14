@@ -15,13 +15,14 @@ let main argv =
         | "-f" -> Utility.runMazeStateForward
         | unknown -> failwithf "I don't know what %s means" unknown
     let mazeDirectory= if argv.Length >1 then argv.[1] else "../mazes"
+    printfn "\n================================================================================"
     System.IO.Directory.EnumerateFiles(mazeDirectory, "*.txt")
     |> Seq.map readMaze
     |> Seq.map createMazeState
     |> Seq.map (search runMazeState)
     |> Seq.iter (function
         | None -> printfn "No valid mazes"
-        | Some (solution,count) -> printfn "Solution found in (%d) steps" count; printMazeState solution)
+        | Some (solution,count) -> (*printfn "Solution found in (%d) steps" count;*) printMazeState solution; printfn "================================================================================")
     printfn ("All Mazes finished!")
 
     
