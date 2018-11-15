@@ -110,7 +110,7 @@
         maze
         |> Seq.sortBy (function (KeyValue((x,y),_)) -> y,x )    //flip the maze around
         |> Seq.map (function (KeyValue(p,color)) -> p,color)    //unwrapping the map KeyValuePair values
-        |> Seq.filter (function _,'_' -> false | _ -> true)     //filter out blank spots
+        |> Seq.filter (function _,'_' -> false | _,'.' -> false | _ -> true)     //filter out blank spots
         |> Seq.iter (fun (p,color) ->
             if starts.ContainsKey color |> not then
                 starts <- Map.add color p starts
@@ -220,6 +220,40 @@
                 loop h (maze.Add(h,'.')) (fun maze' -> loop2 rest maze' backtrack)
             | _ :: rest -> loop2 rest maze backtrack
         loop start maze (fun _ -> false)
+
+    let findFrontier pt (maze:Maze) =
+        let rec loop (x,y) (maze:Maze) frontier edge =
+            let directions,newEdges =
+                [
+                    -1,0 // west
+                    0,-1 // north
+                    1,0// east
+                    0,1// south
+                ]
+                |> List.map(fun (a,b) -> a+x,b+y)
+                |> List.choose(fun p -> maze.TryFind p |> Option.filter (fun c -> c <> '.') |> Option.map (fun c -> p,c))
+                |> List.partition (fun (p,c) -> c = '_')
+                |> fun (a,b) -> a|>List.map fst,b|>List.map fst
+            loop2 (directions@frontier) (directions |> Seq.fold (fun (m:Maze) p -> m.Add(p,'.')) maze) (newEdges@edge)
+        and loop2 frontier (maze:Maze) edge =
+            match frontier with
+            | [] -> edge,maze
+            | h :: rest ->
+                loop h maze rest edge
+        loop pt (maze.Add(pt,'.')) [] []
+    let checkIfSpaceRegionsAreOk (mazeState:MazeState) =
+        let maze = mazeState.maze
+        let activeHeadsAndGoals = mazeState.heads |> Seq.fold (fun (s:Set<_>) head -> let p = head.x,head.y in s.Add(p).Add(mazeState.goals.[head.color])) Set.empty
+        let rec loop (maze:Maze) =
+            match maze |> Seq.tryFind (function | KeyValue (p,'_') -> true | _ -> false) with
+            | None -> true
+            | Some (KeyValue(p,_)) ->
+                // check this space region for any heads or open goals
+                let edges,maze' = findFrontier p maze
+                if edges |> Seq.exists activeHeadsAndGoals.Contains then
+                    loop maze'
+                else false
+        loop maze
                     
     let rec runMazeStateForward (mazeState : MazeState) = 
 
@@ -238,23 +272,25 @@
             let maze = mazeState.maze
             mazeState.heads |> Seq.forall (fun head -> findPath (head.x,head.y) (mazeState.goals.[head.color]) maze)
 
-        if allTheHeadsHavePaths then        
-            //let f = getValidMoves mazeState           //Partially applied version of line 107
-            mazeState.heads  
-            |> List.map (getValidMoves mazeState)       // same as List.map (fun x -> getValidMoves mazeState x)
-            |> List.map (List.filter (fun head -> 
-                let results = hasAccess mazeState head
-                results))
-            |> List.sortBy (fun x -> x.Length)          // first element should be the smallest list of heads with directions to go to
-            |> function
-                | [] -> Some [mazeState]                //there are no heads left (remove heads from list when they are complete) that need to move so the mazestate is finished 
-                | [] :: _ -> None                       //backtrack
-                | [(_,_) as head]  :: t  -> head|> updateHead |> runMazeStateForward  //during a goalcase we need to place the new location in the maze and remove the head color
-                | h::t -> 
-                    h
-                    |> List.map (updateHead)
-                    |> Some                             //return a list of possible MazeState choices
-        else None
+        if checkIfSpaceRegionsAreOk mazeState |> not then None // if the edges around any of the space regions don't have a active head or goal then this is a bad state and backtrack
+        else
+            if allTheHeadsHavePaths then        
+                //let f = getValidMoves mazeState           //Partially applied version of line 107
+                mazeState.heads  
+                |> List.map (getValidMoves mazeState)       // same as List.map (fun x -> getValidMoves mazeState x)
+                |> List.map (List.filter (fun head -> 
+                    let results = hasAccess mazeState head
+                    results))
+                |> List.sortBy (fun x -> x.Length)          // first element should be the smallest list of heads with directions to go to
+                |> function
+                    | [] -> Some [mazeState]                //there are no heads left (remove heads from list when they are complete) that need to move so the mazestate is finished 
+                    | [] :: _ -> None                       //backtrack
+                    | [(_,_) as head]  :: t  -> head|> updateHead |> runMazeStateForward  //during a goalcase we need to place the new location in the maze and remove the head color
+                    | h::t -> 
+                        h
+                        |> List.map (updateHead)
+                        |> Some                             //return a list of possible MazeState choices
+            else None
 
 
     
@@ -289,6 +325,7 @@
                 match mazeState.maze.TryFind p with
                 | None -> printf " "
                 | Some '_' -> printf "_"
+                | Some '.' -> printf "."
                 | Some c ->
                     if mazeState.goals.[c] = p || mazeState.starts.[c] = p then printf "%c" c
                     else System.Char.ToLower(c) |> printf "%c"
@@ -309,6 +346,7 @@
                         match mazeState.maze.TryFind p with
                         | None -> printf " "
                         | Some '_' -> printf "_"
+                        | Some '.' -> printf "."
                         | Some c ->
                             let bkc = System.Console.BackgroundColor
                             if mazeState.starts.[c] = p then
@@ -361,8 +399,8 @@
         let mutable count = 0
         let rec loop mazeStates backtrackFun =    
             count <- count+1
-            //if count % 1 = 0 then printfn "\ncount: %d | time: %s \n" count ((System.DateTime.Now - startTime).ToString ())
-            //if count % 1 = 0 then printfn "Set of mazeStates: ";printMazeStates mazeStates;
+            //if count % 1000 = 0 then printfn "\ncount: %d | time: %s \n" count ((System.DateTime.Now - startTime).ToString ())
+            //if count % 1000 = 0 then printfn "Set of mazeStates: ";printMazeStates mazeStates;
             //System.Threading.Thread.Sleep(10000)
             //System.Console.ReadKey() |>ignore
             match mazeStates with
