@@ -62,6 +62,15 @@
         )
         |> Map.ofSeq
 
+    let readMazeFromString str = 
+        let lines = (str:string).Split('\n','\r') |> Seq.map (fun s -> s.Trim()) |> Seq.filter (System.String.IsNullOrEmpty >> not) |> Seq.toArray
+        { 0 .. lines.Length-1}
+        |> Seq.collect (fun y ->
+            lines.[y]
+            |> Seq.mapi (fun x c -> (x,y), c)
+        )
+        |> Map.ofSeq
+
     //let readMazeAsDictionary file = 
     //    let lines = System.IO.File.ReadAllLines(file)
     //    { 0 .. lines.Length-1}
@@ -181,39 +190,71 @@
             |> List.filter (fun p -> maze.ContainsKey p)    // remove any locations outside the maze
         loop directions id
 
-
+    let dist (ax,ay) (bx,by) = 
+        let dx = float(bx-ax) 
+        let dy = float(by-ay)
+        sqrt(dx*dx+dy*dy)
+    let findPath start goal (maze:Maze) =
+        let rec loop (x,y) (maze:Maze) backtrack =
+            let directions =
+                [
+                    -1,0 // west
+                    0,-1 // north
+                    1,0// east
+                    0,1// south
+                ]
+                |> Seq.map (fun (a,b) -> a+x,b+y)
+                |> Seq.choose (fun p -> if p = goal then Some (p,0.) else maze.TryFind p |> Option.filter (fun c -> c = '_') |> Option.map (fun _ -> p,dist p goal))
+                |> Seq.sortBy snd
+                |> Seq.toList
+            match directions with
+            | [] -> backtrack maze
+            | (h,_) :: _ when h = goal -> true
+            | (h,_) :: rest ->
+                loop h (maze.Add(h,'.')) (fun maze' -> loop2 rest maze' backtrack)
+        and loop2 otherDirs maze backtrack =
+            match otherDirs with
+            | [] -> backtrack maze
+            | (h,_) :: _ when h = goal -> true
+            | (h,_) :: rest when maze.TryFind h = Some '_' ->
+                loop h (maze.Add(h,'.')) (fun maze' -> loop2 rest maze' backtrack)
+            | _ :: rest -> loop2 rest maze backtrack
+        loop start maze (fun _ -> false)
+                    
     let rec runMazeStateForward (mazeState : MazeState) = 
-        
-        let updateHead {color = color; x=x ; y=y}=
+
+        let updateHead ({color = color; x=x ; y=y},isGoal) =
             {
                 mazeState with
                     maze = mazeState.maze.Add((x,y),color)
-                    heads = mazeState.heads |> List.map (fun h -> if h.color = color then {h with x=x;y=y} else h) //changing the xy coordinates
+                    heads = 
+                        if isGoal then  
+                            mazeState.heads |> List.filter (fun h -> h.color <> color)
+                        else
+                            mazeState.heads |> List.map (fun h -> if h.color = color then {h with x=x;y=y} else h) //changing the xy coordinates
             }
-        
-        //let f = getValidMoves mazeState           //Partially applied version of line 107
-        mazeState.heads  
-        |> List.map (getValidMoves mazeState)       // same as List.map (fun x -> getValidMoves mazeState x)
-        |> List.map (List.filter (fun head -> 
-            let results = hasAccess mazeState head
-            results))
-        |> List.sortBy (fun x -> x.Length)          // first element should be the smallest list of heads with directions to go to
-        |> function
-            | [] -> Some [mazeState]                //there are no heads left (remove heads from list when they are complete) that need to move so the mazestate is finished 
-            | [] :: _ -> None                       //backtrack
-            | [{color = color; x=x ; y=y},true]  :: t  -> 
-                //during a goalcase we need to place the new location in the maze and remove the head color
-                {
-                    mazeState with 
-                        maze = mazeState.maze.Add((x,y),color)
-                        heads = mazeState.heads |> List.filter (fun h -> h.color <> color)  //removing head because we found the goal
-                } |> runMazeStateForward 
 
-            | [h,false]  :: t  -> h |> updateHead |> runMazeStateForward                    //when not a goalcase we need to place the new location in the maze and try again
-            | h::t -> 
-                h
-                |> List.map (fst >> updateHead)
-                |> Some                             //return a list of possible MazeState choices
+        let allTheHeadsHavePaths =
+            let maze = mazeState.maze
+            mazeState.heads |> Seq.forall (fun head -> findPath (head.x,head.y) (mazeState.goals.[head.color]) maze)
+
+        if allTheHeadsHavePaths then        
+            //let f = getValidMoves mazeState           //Partially applied version of line 107
+            mazeState.heads  
+            |> List.map (getValidMoves mazeState)       // same as List.map (fun x -> getValidMoves mazeState x)
+            |> List.map (List.filter (fun head -> 
+                let results = hasAccess mazeState head
+                results))
+            |> List.sortBy (fun x -> x.Length)          // first element should be the smallest list of heads with directions to go to
+            |> function
+                | [] -> Some [mazeState]                //there are no heads left (remove heads from list when they are complete) that need to move so the mazestate is finished 
+                | [] :: _ -> None                       //backtrack
+                | [(_,_) as head]  :: t  -> head|> updateHead |> runMazeStateForward  //during a goalcase we need to place the new location in the maze and remove the head color
+                | h::t -> 
+                    h
+                    |> List.map (updateHead)
+                    |> Some                             //return a list of possible MazeState choices
+        else None
 
 
     
