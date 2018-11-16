@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "AI_Assignment_2": {
+      "commandName": "Project",
+      "commandLineArgs": "--forward ../../../../mazes"
+    }
+  }
+}
